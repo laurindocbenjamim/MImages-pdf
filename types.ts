@@ -6,6 +6,16 @@ export interface ImageFile {
   size: number;
 }
 
+export type PageType = 'IMAGE' | 'TEXT';
+
+export interface EditorPage {
+  id: string;
+  type: PageType;
+  content: string; // URL for IMAGE, HTML for TEXT
+  originalName?: string;
+  parentId?: string; // If derived from another page
+}
+
 export enum AppState {
   LANDING = 'LANDING',
   WORKSPACE = 'WORKSPACE',

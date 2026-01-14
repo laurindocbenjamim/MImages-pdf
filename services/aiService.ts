@@ -15,42 +15,27 @@ const getBase64AndMime = (base64Data: string) => {
   return { base64String, mimeType };
 };
 
-/**
- * Sends the image to Gemini to convert handwriting to digital font
- * while maintaining layout.
- */
-export const digitizeHandwriting = async (base64Data: string): Promise<string> => {
-  const { base64String, mimeType } = getBase64AndMime(base64Data);
+const urlToBase64 = async (url: string): Promise<string> => {
+  // If it's already a data URL, return it
+  if (url.startsWith('data:')) return url;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              data: base64String,
-              mimeType: mimeType,
-            },
-          },
-          {
-            text: 'Analyze the handwriting in this document. Replace all handwritten text with a clean, professional digital sans-serif font (like Arial or Roboto). Crucially, you must maintain the EXACT layout, position, line spacing, and scale of the original text. Preserve any non-text elements like lines, boxes, or logos. Return only the processed image.',
-          },
-        ],
-      },
-    });
-
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-           return `data:image/png;base64,${part.inlineData.data}`;
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error("Failed to convert blob to base64 string"));
         }
-      }
-    }
-    
-    throw new Error("The AI model processed the request but did not return an image.");
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   } catch (error) {
-    console.error("AI Digitize Error:", error);
+    console.error("Error converting URL to base64:", error);
     throw error;
   }
 };
@@ -59,22 +44,14 @@ export const digitizeHandwriting = async (base64Data: string): Promise<string> =
  * Analyzes the image layout and returns structured HTML content
  * representing the document (Headers, Paragraphs, Lists).
  */
-export const extractDocumentLayout = async (base64Data: string): Promise<string> => {
-  const { base64String, mimeType } = getBase64AndMime(base64Data);
-
+export const extractDocumentLayout = async (imageUrl: string, preserveFormatting: boolean = true): Promise<string> => {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              data: base64String,
-              mimeType: mimeType,
-            },
-          },
-          {
-            text: `Perform a layout analysis of this document image. Extract the text and convert it into a semantic HTML structure. 
+    // Ensure we have a base64 data URL
+    const base64Data = await urlToBase64(imageUrl);
+    const { base64String, mimeType } = getBase64AndMime(base64Data);
+
+    const prompt = preserveFormatting 
+      ? `Perform a layout analysis of this document image. Extract the text and convert it into a semantic HTML structure. 
             
             Rules:
             1. Use <h1>, <h2>, <h3> for headers based on font size/weight.
@@ -85,7 +62,24 @@ export const extractDocumentLayout = async (base64Data: string): Promise<string>
             6. Do NOT use any CSS classes or inline styles.
             7. Ensure the reading order is correct.
             
-            Return ONLY the raw HTML string.`,
+            Return ONLY the raw HTML string.`
+      : `Extract all text from this image and return it as simple HTML paragraphs (<p>). 
+         Do not use headers, lists, or bold/italic formatting. 
+         Just clean, readable paragraphs of text. 
+         Return ONLY the raw HTML string.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              data: base64String,
+              mimeType: mimeType,
+            },
+          },
+          {
+            text: prompt,
           },
         ],
       },

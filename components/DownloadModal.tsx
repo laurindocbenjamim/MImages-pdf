@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { ImageFile } from '../types';
+import { EditorPage } from '../types';
 import { X, FileText, Download, Printer, Check, ArrowRight, Mail, Wand2, Hash } from 'lucide-react';
 import { generatePDF } from '../services/pdfService';
 
 interface DownloadModalProps {
-  images: ImageFile[];
+  pages: EditorPage[];
   onClose: () => void;
 }
 
-const DownloadModal: React.FC<DownloadModalProps> = ({ images, onClose }) => {
+const DownloadModal: React.FC<DownloadModalProps> = ({ pages, onClose }) => {
   const [step, setStep] = useState<'CONFIG' | 'EMAIL'>('CONFIG');
   const [fileName, setFileName] = useState('merged-document');
   const [format, setFormat] = useState('pdf');
@@ -35,7 +35,7 @@ const DownloadModal: React.FC<DownloadModalProps> = ({ images, onClose }) => {
     try {
       if (format === 'pdf') {
         console.log("Registered user email:", email);
-        await generatePDF(images, fileName, {
+        await generatePDF(pages, fileName, {
           includePageNumbers,
           enableScanMode
         });
@@ -124,10 +124,6 @@ const DownloadModal: React.FC<DownloadModalProps> = ({ images, onClose }) => {
               <div className="space-y-3">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Format</label>
                 <FormatOption id="pdf" label="PDF Document" ext="pdf" color="bg-red-500" />
-                {/* 
-                <FormatOption id="docx" label="Word Document" ext="docx" color="bg-blue-600" />
-                <FormatOption id="jpg" label="JPG Image" ext="jpg" color="bg-yellow-500" />
-                */}
               </div>
 
               {/* Advanced Options */}
@@ -137,7 +133,7 @@ const DownloadModal: React.FC<DownloadModalProps> = ({ images, onClose }) => {
                  <ToggleOption 
                    icon={Wand2} 
                    label="Scan Mode" 
-                   description="Clean background & enhance text"
+                   description="Clean background & enhance text (Images only)"
                    checked={enableScanMode} 
                    onChange={setEnableScanMode} 
                  />

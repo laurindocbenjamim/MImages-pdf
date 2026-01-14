@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
-import { ImageFile } from '../types';
+import html2canvas from 'html2canvas';
+import { EditorPage } from '../types';
 
 export interface GeneratePDFOptions {
   includePageNumbers: boolean;
@@ -26,7 +27,6 @@ const processImageForPDF = (url: string, enableScanMode: boolean): Promise<strin
       const data = imageData.data;
 
       // Threshold for considering a pixel "background" (paper)
-      // 0 = black, 255 = white. Higher threshold = more aggressive cleaning.
       const threshold = 180; 
 
       for (let i = 0; i < data.length; i += 4) {
@@ -34,17 +34,13 @@ const processImageForPDF = (url: string, enableScanMode: boolean): Promise<strin
         const g = data[i + 1];
         const b = data[i + 2];
         
-        // Calculate luminance (perceived brightness)
         const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
 
         if (luminance > threshold) {
-          // Turn light pixels (background) to pure white
           data[i] = 255;
           data[i + 1] = 255;
           data[i + 2] = 255;
         } else {
-          // Increase contrast for dark pixels (text/ink) by darkening them
-          // Multiply by factor < 1 to darken
           const contrastFactor = 0.75;
           data[i] = Math.max(0, r * contrastFactor);
           data[i + 1] = Math.max(0, g * contrastFactor);
@@ -53,24 +49,49 @@ const processImageForPDF = (url: string, enableScanMode: boolean): Promise<strin
       }
       
       ctx.putImageData(imageData, 0, 0);
-      // Return high quality JPEG to keep file size reasonable
       resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
-    img.onerror = () => resolve(url); // Fallback to original if processing fails
+    img.onerror = () => resolve(url);
     img.src = url;
   });
 };
 
+const renderHtmlToImage = async (htmlContent: string): Promise<string> => {
+  // Create a temporary container
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.top = '-9999px';
+  container.style.left = '-9999px';
+  container.style.width = '794px'; // A4 width at 96 DPI approx
+  container.style.minHeight = '1123px'; // A4 height
+  container.style.padding = '48px';
+  container.style.backgroundColor = 'white';
+  container.style.color = 'black';
+  container.className = 'prose prose-slate max-w-none'; // Use Tailwind typography matches
+  container.innerHTML = htmlContent;
+  
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2, // Higher resolution
+      useCORS: true,
+      logging: false
+    });
+    return canvas.toDataURL('image/jpeg', 0.9);
+  } finally {
+    document.body.removeChild(container);
+  }
+};
+
 /**
- * Generates a PDF from a list of images.
- * Includes options for background cleaning and pagination.
+ * Generates a PDF from a list of pages (Images or Text).
  */
 export const generatePDF = async (
-  images: ImageFile[], 
+  pages: EditorPage[], 
   filename: string, 
   options: GeneratePDFOptions = { includePageNumbers: false, enableScanMode: false }
 ): Promise<void> => {
-  // Create a new PDF document (A4 default)
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -78,28 +99,28 @@ export const generatePDF = async (
   const maxW = pageWidth - (margin * 2);
   const maxH = pageHeight - (margin * 2);
 
-  // Process images sequentially to manage memory/resources
-  for (let i = 0; i < images.length; i++) {
-    const image = images[i];
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
     
-    // Add page if not the first one
-    if (i > 0) {
-      doc.addPage();
+    if (i > 0) doc.addPage();
+
+    let processedImageUrl = '';
+
+    if (page.type === 'IMAGE') {
+       processedImageUrl = await processImageForPDF(page.content, options.enableScanMode);
+    } else if (page.type === 'TEXT') {
+       processedImageUrl = await renderHtmlToImage(page.content);
     }
 
-    // Process image (clean background if enabled)
-    const processedImageUrl = await processImageForPDF(image.previewUrl, options.enableScanMode);
+    if (!processedImageUrl) continue;
 
     const imgProps = doc.getImageProperties(processedImageUrl);
-    
-    // Calculate dimensions to fit the image within the page (A4) while maintaining aspect ratio
     const imgRatio = imgProps.width / imgProps.height;
     
     let finalWidth = pageWidth;
     let finalHeight = pageHeight;
     
     if (imgRatio > 1) {
-       // Landscape-ish image
        finalWidth = maxW;
        finalHeight = maxW / imgRatio;
        if (finalHeight > maxH) {
@@ -107,7 +128,6 @@ export const generatePDF = async (
          finalWidth = maxH * imgRatio;
        }
     } else {
-       // Portrait-ish image
        finalHeight = maxH;
        finalWidth = maxH * imgRatio;
        if (finalWidth > maxW) {
@@ -116,19 +136,16 @@ export const generatePDF = async (
        }
     }
 
-    // Center the image
     const x = (pageWidth - finalWidth) / 2;
     const y = (pageHeight - finalHeight) / 2;
 
     doc.addImage(processedImageUrl, 'JPEG', x, y, finalWidth, finalHeight);
 
-    // Add Page Numbers
     if (options.includePageNumbers) {
       doc.setFontSize(10);
       doc.setTextColor(100);
-      const pageNumText = `Page ${i + 1} of ${images.length}`;
+      const pageNumText = `Page ${i + 1} of ${pages.length}`;
       const textWidth = doc.getTextWidth(pageNumText);
-      // Position at bottom center, slightly above bottom edge
       doc.text(pageNumText, (pageWidth - textWidth) / 2, pageHeight - 10);
     }
   }
