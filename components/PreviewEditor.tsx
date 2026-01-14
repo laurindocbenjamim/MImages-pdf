@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ImageFile, EditorPage } from '../types';
 import { 
   Undo, Redo, Image as ImageIcon,
   ChevronLeft, ChevronRight, Crop, Edit3,
   Loader2, FileText, ScanText, Check,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Type,
-  Palette
+  Palette, ArrowUp, ArrowDown
 } from 'lucide-react';
 import DownloadModal from './DownloadModal';
 import ImageCropper from './ImageCropper';
@@ -15,6 +15,7 @@ import { extractDocumentLayout } from '../services/aiService';
 const RichTextEditor = React.memo(({ html, onChange, className, style }: { html: string, onChange: (h: string) => void, className: string, style: React.CSSProperties }) => {
   return (
       <div 
+          id="editor-content"
           contentEditable
           suppressContentEditableWarning
           onBlur={(e) => onChange(e.currentTarget.innerHTML)}
@@ -42,6 +43,9 @@ interface ExtractOptions {
 const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateImage, onRemoveImage, onMoveImage }) => {
   const [pages, setPages] = useState<EditorPage[]>([]);
   const [initialized, setInitialized] = useState(false);
+  
+  // Track the last valid selection range inside the editor
+  const lastValidRange = useRef<Range | null>(null);
 
   // Initialize pages
   useEffect(() => {
@@ -55,6 +59,7 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
       setPages(initialPages);
       setInitialized(true);
     } else if (initialized) {
+       // Only update image content if the pages structure matches roughly or by ID
        setPages(prev => prev.map(p => {
          const matchingImg = images.find(img => img.id === p.id);
          if (matchingImg && p.type === 'IMAGE') {
@@ -90,9 +95,20 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
 
   const currentPage = pages[currentPageIndex];
 
-  // Selection Change Listener
+  // Selection Change Listener & Range Saver
   useEffect(() => {
-    const updateFormatState = () => {
+    const handleSelectionChange = () => {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        const editor = document.getElementById('editor-content');
+        
+        // Save range if it's inside our editor
+        if (editor && editor.contains(range.commonAncestorContainer)) {
+           lastValidRange.current = range;
+        }
+      }
+
       if (currentPage?.type !== 'TEXT') return;
       try {
         setFormatState({
@@ -109,8 +125,8 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
       }
     };
 
-    document.addEventListener('selectionchange', updateFormatState);
-    return () => document.removeEventListener('selectionchange', updateFormatState);
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
   }, [currentPage]);
 
   // Safety check
@@ -137,6 +153,23 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
        if (currentPageIndex >= newPages.length) {
          setCurrentPageIndex(Math.max(0, newPages.length - 1));
        }
+    }
+  };
+
+  const handleMovePage = (index: number, direction: -1 | 1) => {
+    if (index + direction < 0 || index + direction >= pages.length) return;
+    
+    const newPages = [...pages];
+    const temp = newPages[index];
+    newPages[index] = newPages[index + direction];
+    newPages[index + direction] = temp;
+    setPages(newPages);
+    
+    // Follow the current page selection
+    if (currentPageIndex === index) {
+        setCurrentPageIndex(index + direction);
+    } else if (currentPageIndex === index + direction) {
+        setCurrentPageIndex(index);
     }
   };
 
@@ -173,17 +206,30 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
   const handleTextChange = useCallback((newHtml: string) => {
      setPages(currentPages => {
         const updatedPages = [...currentPages];
-        // We need to find the index carefully if we were to use ID, but currentPageIndex is state
-        // To be safe in a callback, we should use the index from closure or finding it
-        // Since currentPageIndex is in closure but might be stale if we didn't add it to dependencies?
-        // Actually, if we use the function updater for setPages, we are safe. 
-        // But we need the CURRENT index.
-        return updatedPages.map((p, i) => i === currentPageIndex ? { ...p, content: newHtml } : p);
+        // We need to use function update to ensure we have latest pages, 
+        // but we need the current page index from the closure or ref.
+        // Since we are inside useCallback with [currentPageIndex], this callback is recreated when index changes.
+        // So `currentPageIndex` is fresh.
+        if (currentPageIndex < updatedPages.length) {
+             updatedPages[currentPageIndex] = { ...updatedPages[currentPageIndex], content: newHtml };
+        }
+        return updatedPages;
      });
   }, [currentPageIndex]);
 
   const execCmd = (cmd: string, val?: string) => {
+    // Restore selection if lost (e.g. clicking on color input or select)
+    const sel = window.getSelection();
+    const editor = document.getElementById('editor-content');
+    const isSelectionInEditor = sel && sel.rangeCount > 0 && editor && editor.contains(sel.anchorNode);
+
+    if (!isSelectionInEditor && lastValidRange.current) {
+        sel?.removeAllRanges();
+        sel?.addRange(lastValidRange.current);
+    }
+
     document.execCommand(cmd, false, val);
+    
     // Force update state after command
     const selectionEvent = new Event('selectionchange');
     document.dispatchEvent(selectionEvent);
@@ -444,16 +490,45 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
                    {idx + 1}
                  </span>
                  
-                 {/* Delete Page Button */}
-                 {currentPageIndex === idx && (
-                     <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeletePage(); }}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                        title="Delete Page"
-                     >
-                        <Check size={12} className="rotate-45" /> {/* Use X icon ideally, reusing Check rotated or import X */}
-                     </button>
-                 )}
+                 {/* Page Controls Overlay */}
+                 <div className="absolute inset-x-0 bottom-0 top-0 bg-black/0 group-hover:bg-black/5 transition-colors rounded-lg flex flex-col justify-between p-1 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
+                    {/* Move Up */}
+                    <div className="flex justify-center">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleMovePage(idx, -1); }}
+                            disabled={idx === 0}
+                            className="p-1 bg-white rounded-full shadow-sm hover:bg-blue-50 text-slate-500 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transform translate-y-2 group-hover:translate-y-0 transition-transform"
+                            title="Move Up"
+                        >
+                            <ArrowUp size={12} />
+                        </button>
+                    </div>
+
+                    {/* Delete Page Button */}
+                    {currentPageIndex === idx && (
+                        <div className="absolute top-1 right-1">
+                             <button 
+                                onClick={(e) => { e.stopPropagation(); handleDeletePage(); }}
+                                className="bg-red-500 text-white p-1 rounded-full shadow hover:bg-red-600 transition-colors"
+                                title="Delete Page"
+                             >
+                                <Check size={12} className="rotate-45" /> 
+                             </button>
+                        </div>
+                    )}
+
+                    {/* Move Down */}
+                    <div className="flex justify-center pb-6">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleMovePage(idx, 1); }}
+                            disabled={idx === pages.length - 1}
+                            className="p-1 bg-white rounded-full shadow-sm hover:bg-blue-50 text-slate-500 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transform -translate-y-2 group-hover:translate-y-0 transition-transform"
+                            title="Move Down"
+                        >
+                            <ArrowDown size={12} />
+                        </button>
+                    </div>
+                 </div>
                </div>
              ))}
            </div>
