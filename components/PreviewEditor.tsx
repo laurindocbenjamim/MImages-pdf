@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, Crop, Edit3,
   Loader2, FileText, ScanText, Check,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Type,
-  Palette, ArrowUp, ArrowDown
+  Palette, ArrowUp, ArrowDown, List, ListOrdered
 } from 'lucide-react';
 import DownloadModal from './DownloadModal';
 import ImageCropper from './ImageCropper';
@@ -90,7 +90,9 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
     justifyLeft: true,
     justifyCenter: false,
     justifyRight: false,
-    justifyFull: false
+    justifyFull: false,
+    insertUnorderedList: false,
+    insertOrderedList: false,
   });
 
   const currentPage = pages[currentPageIndex];
@@ -119,6 +121,8 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
             justifyCenter: document.queryCommandState('justifyCenter'),
             justifyRight: document.queryCommandState('justifyRight'),
             justifyFull: document.queryCommandState('justifyFull'),
+            insertUnorderedList: document.queryCommandState('insertUnorderedList'),
+            insertOrderedList: document.queryCommandState('insertOrderedList'),
         });
       } catch (e) {
         // Ignore errors if command not supported or no selection
@@ -402,10 +406,13 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
                       className="text-xs border border-slate-300 rounded p-1 w-28 outline-none focus:border-blue-500"
                       defaultValue="3"
                    >
-                     <option value="1">Small</option>
-                     <option value="3">Normal</option>
-                     <option value="5">Large</option>
-                     <option value="7">Huge</option>
+                     <option value="1">10</option>
+                     <option value="2">13</option>
+                     <option value="3">16</option>
+                     <option value="4">18</option>
+                     <option value="5">24</option>
+                     <option value="6">32</option>
+                     <option value="7">48</option>
                    </select>
                 </div>
 
@@ -415,6 +422,12 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
                 <ToolbarBtn icon={Bold} onClick={() => execCmd('bold')} active={formatState.bold} title="Bold" />
                 <ToolbarBtn icon={Italic} onClick={() => execCmd('italic')} active={formatState.italic} title="Italic" />
                 <ToolbarBtn icon={Underline} onClick={() => execCmd('underline')} active={formatState.underline} title="Underline" />
+
+                <div className="h-8 w-px bg-slate-200 mx-1"></div>
+                
+                 {/* List Toggles */}
+                 <ToolbarBtn icon={List} onClick={() => execCmd('insertUnorderedList')} active={formatState.insertUnorderedList} title="Bullet List" />
+                 <ToolbarBtn icon={ListOrdered} onClick={() => execCmd('insertOrderedList')} active={formatState.insertOrderedList} title="Numbered List" />
 
                 <div className="h-8 w-px bg-slate-200 mx-1"></div>
 
@@ -611,9 +624,8 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
                              key={currentPage.id} // Important: force new instance on page switch
                              html={currentPage.content}
                              onChange={handleTextChange}
-                             className={`flex-1 p-12 outline-none prose prose-slate max-w-none focus:bg-blue-50/10 transition-colors ${
-                                extractConfig.forceBlack ? 'text-black [&_*]:text-black' : 'text-slate-800'
-                             }`}
+                             // Removed [&_*]:text-black to ensure inline styles for color are respected
+                             className={`flex-1 p-12 outline-none prose prose-slate max-w-none focus:bg-blue-50/10 transition-colors text-slate-800`}
                              style={editorStyle}
                           />
                        )}
