@@ -63,6 +63,17 @@ const App: React.FC = () => {
     ));
   };
 
+  const handleMoveImage = (index: number, direction: -1 | 1) => {
+    if (index + direction < 0 || index + direction >= images.length) return;
+    setImages(prev => {
+      const newImages = [...prev];
+      const temp = newImages[index];
+      newImages[index] = newImages[index + direction];
+      newImages[index + direction] = temp;
+      return newImages;
+    });
+  };
+
   const handleMerge = () => {
     if (images.length === 0) return;
 
@@ -129,6 +140,7 @@ const App: React.FC = () => {
             onBack={() => setAppState(AppState.WORKSPACE)} 
             onUpdateImage={handleUpdateImage}
             onRemoveImage={handleRemoveImage}
+            onMoveImage={handleMoveImage}
           />
         )}
       </main>

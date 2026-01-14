@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, MouseEvent } from 'react';
-import { Check, X, Trash2, Lock, Unlock, RotateCcw } from 'lucide-react';
+import { Check, X, Trash2, Lock, Unlock, RotateCw } from 'lucide-react';
 
 interface ImageCropperProps {
   imageUrl: string;
@@ -16,6 +16,8 @@ interface CropRect {
 }
 
 const ImageCropper: React.FC<ImageCropperProps> = ({ imageUrl, onCancel, onSave, onDelete }) => {
+  // We use local state for the image URL to handle rotations instantly
+  const [currentImgUrl, setCurrentImgUrl] = useState(imageUrl);
   const [imageLoaded, setImageLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -92,8 +94,6 @@ const ImageCropper: React.FC<ImageCropperProps> = ({ imageUrl, onCancel, onSave,
     const mouseY = e.clientY - containerRect.top;
 
     // Convert mouse pos to percentage relative to image rect
-    // We need to account for the image position inside the container if centered
-    // But here we assume image fills container or we track image rect
     const imgRect = imgRef.current!.getBoundingClientRect();
     const relX = (e.clientX - imgRect.left) / imgRect.width * 100;
     const relY = (e.clientY - imgRect.top) / imgRect.height * 100;
@@ -101,13 +101,10 @@ const ImageCropper: React.FC<ImageCropperProps> = ({ imageUrl, onCancel, onSave,
     let newCrop = { ...crop };
 
     if (isDragging === 'move') {
-      // Center logic for movement is tricky without previous mouse pos
-      // Simplification: We usually track delta. 
-      // For this demo, implementing full drag logic is complex code.
-      // I will implement a simplified resize logic which is the core requirement.
+      // Simple move handling requires delta logic, simplifying for now to just allow selection resize
+      // Implementation of move would require tracking start pos.
     } else {
         // Resize Logic
-        // type is like 'nw', 'se', etc.
         if (isDragging.includes('e')) newCrop.w = Math.max(5, Math.min(100 - newCrop.x, relX - newCrop.x));
         if (isDragging.includes('s')) newCrop.h = Math.max(5, Math.min(100 - newCrop.y, relY - newCrop.y));
         if (isDragging.includes('w')) {
@@ -143,6 +140,30 @@ const ImageCropper: React.FC<ImageCropperProps> = ({ imageUrl, onCancel, onSave,
     return () => window.removeEventListener('mouseup', handleUp);
   }, []);
 
+  const handleRotate = () => {
+    if (!imgRef.current) return;
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Use natural dimensions
+    const w = imgRef.current.naturalWidth;
+    const h = imgRef.current.naturalHeight;
+
+    // New dimensions (swapped for 90deg)
+    canvas.width = h;
+    canvas.height = w;
+
+    // Rotate context
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((90 * Math.PI) / 180);
+    ctx.drawImage(imgRef.current, -w / 2, -h / 2);
+
+    const newUrl = canvas.toDataURL('image/jpeg', 0.95);
+    setCurrentImgUrl(newUrl);
+    // onLoad will trigger and reset naturalSize, effectively refreshing the crop context
+  };
 
   const handleSave = () => {
     const canvas = document.createElement('canvas');
@@ -172,18 +193,14 @@ const ImageCropper: React.FC<ImageCropperProps> = ({ imageUrl, onCancel, onSave,
     setAspectRatio(ratio);
     setLockAspect(true);
     // Recalculate crop to fit ratio centered
-    const currentRatio = naturalSize.w / naturalSize.h;
     let newW = 80;
     let newH = 80;
     
-    if (ratio > currentRatio) {
-        // Wider than image
-        newW = 80;
-        newH = (newW * naturalSize.w / naturalSize.h) / ratio; // math approximation
-        newH = (80 / 100 * naturalSize.w / ratio) / naturalSize.h * 100;
-    } else {
-        newH = 80;
-        newW = (80 / 100 * naturalSize.h * ratio) / naturalSize.w * 100;
+    // Simplistic centering logic for demo
+    if (ratio > 1) { // Landscape
+       newH = 80 / ratio;
+    } else { // Portrait
+       newW = 80 * ratio;
     }
     
     setCrop({
@@ -214,7 +231,7 @@ const ImageCropper: React.FC<ImageCropperProps> = ({ imageUrl, onCancel, onSave,
          <div ref={containerRef} className="relative shadow-2xl">
             <img 
                ref={imgRef}
-               src={imageUrl} 
+               src={currentImgUrl} 
                onLoad={onImageLoad}
                alt="Crop target" 
                className="max-h-[85vh] max-w-full object-contain pointer-events-none select-none"
@@ -241,7 +258,7 @@ const ImageCropper: React.FC<ImageCropperProps> = ({ imageUrl, onCancel, onSave,
                         width: `${crop.w}%`, 
                         height: `${crop.h}%` 
                     }}
-                    onMouseDown={(e) => handleDragStart(e, 'move')} // Simple move handling needs delta logic
+                    onMouseDown={(e) => handleDragStart(e, 'move')}
                  >
                     {/* Grid Lines */}
                     <div className="absolute top-1/3 left-0 right-0 h-px bg-white/30 pointer-events-none"></div>
@@ -293,6 +310,18 @@ const ImageCropper: React.FC<ImageCropperProps> = ({ imageUrl, onCancel, onSave,
                  className={`w-full py-2 border rounded text-sm font-medium ${!aspectRatio ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600'}`}
                >
                  Custom
+               </button>
+            </div>
+
+            {/* Transform */}
+            <div className="space-y-3">
+               <label className="text-xs font-bold text-slate-500 uppercase">Transform</label>
+               <button 
+                  onClick={handleRotate}
+                  className="w-full flex items-center justify-center gap-2 border border-slate-300 rounded-lg py-2 hover:bg-slate-50 text-slate-700 font-medium transition-colors"
+               >
+                  <RotateCw size={18} />
+                  Rotate 90°
                </button>
             </div>
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ImageFile } from '../types';
-import { X, FileText, Download, Printer, Check, ArrowRight, Mail } from 'lucide-react';
+import { X, FileText, Download, Printer, Check, ArrowRight, Mail, Wand2, Hash } from 'lucide-react';
 import { generatePDF } from '../services/pdfService';
 
 interface DownloadModalProps {
@@ -12,6 +12,9 @@ const DownloadModal: React.FC<DownloadModalProps> = ({ images, onClose }) => {
   const [step, setStep] = useState<'CONFIG' | 'EMAIL'>('CONFIG');
   const [fileName, setFileName] = useState('merged-document');
   const [format, setFormat] = useState('pdf');
+  const [includePageNumbers, setIncludePageNumbers] = useState(false);
+  const [enableScanMode, setEnableScanMode] = useState(false);
+  
   const [email, setEmail] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [emailError, setEmailError] = useState('');
@@ -31,14 +34,17 @@ const DownloadModal: React.FC<DownloadModalProps> = ({ images, onClose }) => {
     setIsGenerating(true);
     try {
       if (format === 'pdf') {
-        // Here you would typically save the email to your backend
         console.log("Registered user email:", email);
-        await generatePDF(images, fileName);
+        await generatePDF(images, fileName, {
+          includePageNumbers,
+          enableScanMode
+        });
       } else {
         alert("This demo only supports PDF generation fully.");
       }
     } catch (error) {
       console.error("Failed to generate", error);
+      alert("An error occurred while generating the PDF. Please try again.");
     } finally {
       setIsGenerating(false);
       onClose();
@@ -63,6 +69,27 @@ const DownloadModal: React.FC<DownloadModalProps> = ({ images, onClose }) => {
     </div>
   );
 
+  const ToggleOption = ({ icon: Icon, label, description, checked, onChange }: any) => (
+    <div 
+      onClick={() => onChange(!checked)}
+      className={`cursor-pointer border rounded-xl p-4 flex items-center justify-between hover:bg-slate-50 transition-all ${checked ? 'border-blue-500 bg-blue-50/20' : 'border-slate-200'}`}
+    >
+      <div className="flex items-center gap-4">
+        <div className={`p-2 rounded-lg ${checked ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
+          <Icon size={20} />
+        </div>
+        <div className="flex flex-col">
+          <span className="font-semibold text-slate-800 text-sm">{label}</span>
+          <span className="text-xs text-slate-500">{description}</span>
+        </div>
+      </div>
+      
+      <div className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${checked ? 'bg-blue-600' : 'bg-slate-300'}`}>
+        <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
@@ -75,7 +102,7 @@ const DownloadModal: React.FC<DownloadModalProps> = ({ images, onClose }) => {
           </button>
         </div>
 
-        <div className="p-6 space-y-6 overflow-y-auto">
+        <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
           {step === 'CONFIG' ? (
             <>
               {/* File Name Input */}
@@ -97,8 +124,31 @@ const DownloadModal: React.FC<DownloadModalProps> = ({ images, onClose }) => {
               <div className="space-y-3">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Format</label>
                 <FormatOption id="pdf" label="PDF Document" ext="pdf" color="bg-red-500" />
+                {/* 
                 <FormatOption id="docx" label="Word Document" ext="docx" color="bg-blue-600" />
                 <FormatOption id="jpg" label="JPG Image" ext="jpg" color="bg-yellow-500" />
+                */}
+              </div>
+
+              {/* Advanced Options */}
+              <div className="space-y-3">
+                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Processing Options</label>
+                 
+                 <ToggleOption 
+                   icon={Wand2} 
+                   label="Scan Mode" 
+                   description="Clean background & enhance text"
+                   checked={enableScanMode} 
+                   onChange={setEnableScanMode} 
+                 />
+
+                 <ToggleOption 
+                   icon={Hash} 
+                   label="Page Numbers" 
+                   description="Add numbering to footer"
+                   checked={includePageNumbers} 
+                   onChange={setIncludePageNumbers} 
+                 />
               </div>
             </>
           ) : (
