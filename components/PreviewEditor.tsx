@@ -276,6 +276,10 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
      fontSize: `${12 * (zoom/100)}px`
   }), [zoom]);
 
+  // Base width 595px matches A4 ratio when paired with 12px font vs 794px/16px PDF default
+  const BASE_WIDTH = 595;
+  const A4_RATIO = 1.414;
+
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-100 animate-fade-in relative">
       
@@ -471,7 +475,7 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
       <div className="flex flex-1 overflow-hidden">
         
         {/* Main Canvas Area */}
-        <div className="flex-1 bg-slate-100 overflow-auto p-8 relative flex flex-col items-center">
+        <div className="flex-1 bg-slate-100 overflow-auto py-20 px-8 relative flex flex-col items-center custom-scrollbar">
            
            {/* Navigation Arrows */}
            <button 
@@ -491,7 +495,7 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
            </button>
 
            {/* Content Wrapper */}
-           <div className="flex flex-col items-center gap-6 min-h-full pb-20 w-full justify-center">
+           <div className="flex flex-col items-center gap-6 min-h-full w-full justify-center">
                
                {currentPage && (
                  <div className="flex flex-col items-center gap-2 animate-fade-in w-full max-w-fit">
@@ -504,12 +508,11 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
                       </div>
                      
                      <div 
-                       // REMOVED overflow-hidden for text pages to prevent clipping top/bottom content
                        className={`bg-white shadow-xl transition-all duration-300 ease-out group relative ring-1 ring-slate-900/5 flex flex-col ${currentPage.type === 'IMAGE' ? 'overflow-hidden' : ''}`}
                        style={{ 
-                         width: `${500 * (zoom/100)}px`, 
-                         minHeight: `${700 * (zoom/100)}px`,
-                         height: currentPage.type === 'IMAGE' ? `${700 * (zoom/100)}px` : 'auto',
+                         width: `${BASE_WIDTH * (zoom/100)}px`, 
+                         minHeight: `${(BASE_WIDTH * A4_RATIO) * (zoom/100)}px`,
+                         height: currentPage.type === 'IMAGE' ? `${(BASE_WIDTH * A4_RATIO) * (zoom/100)}px` : 'auto',
                          transformOrigin: 'top center'
                        }}
                      >
@@ -548,8 +551,8 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
                              key={currentPage.id} // Important: force new instance on page switch
                              html={currentPage.content}
                              onChange={handleTextChange}
-                             // Added leading-relaxed, break-words, and whitespace-pre-wrap to fix layout issues
-                             className={`flex-1 p-12 outline-none prose prose-slate max-w-none break-words whitespace-pre-wrap leading-relaxed focus:bg-blue-50/10 transition-colors text-slate-800`}
+                             // Increased padding to px-20 (80px) for wider margins
+                             className={`flex-1 px-20 py-16 outline-none prose prose-slate max-w-none break-words whitespace-pre-wrap leading-relaxed focus:bg-blue-50/10 transition-colors text-slate-800`}
                              style={editorStyle}
                           />
                        )}

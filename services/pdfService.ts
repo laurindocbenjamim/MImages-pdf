@@ -65,8 +65,14 @@ const renderHtmlToImage = async (htmlContent: string): Promise<string> => {
   container.style.width = '794px'; // A4 width at 96 DPI approx
   // Let height be auto to capture full content, but ensure min height matches A4 aspect
   container.style.minHeight = '1123px'; // A4 height
-  // Match padding and styles EXACTLY with the editor to avoid shifting
-  container.style.padding = '48px'; 
+  
+  // Padding Logic:
+  // Editor Width: 595px, Padding: 80px (px-20)
+  // Ratio: 80 / 595 = 0.1344
+  // PDF Width: 794px
+  // Target Padding: 794 * 0.1344 ≈ 106px
+  container.style.padding = '106px 106px 85px 106px'; // Top/Left/Right: ~106px, Bottom: slightly less
+  
   container.style.backgroundColor = 'white';
   container.style.color = '#1e293b'; // slate-800
   
