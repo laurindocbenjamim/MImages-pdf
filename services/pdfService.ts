@@ -60,28 +60,89 @@ const renderHtmlToImage = async (htmlContent: string): Promise<string> => {
   // Create a temporary container
   const container = document.createElement('div');
   container.style.position = 'fixed';
-  container.style.top = '-9999px';
-  container.style.left = '-9999px';
+  container.style.top = '-10000px';
+  container.style.left = '-10000px';
   container.style.width = '794px'; // A4 width at 96 DPI approx
+  // Let height be auto to capture full content, but ensure min height matches A4 aspect
   container.style.minHeight = '1123px'; // A4 height
-  container.style.padding = '48px';
+  // Match padding and styles EXACTLY with the editor to avoid shifting
+  container.style.padding = '48px'; 
   container.style.backgroundColor = 'white';
-  container.style.color = 'black';
-  container.className = 'prose prose-slate max-w-none'; // Use Tailwind typography matches
+  container.style.color = '#1e293b'; // slate-800
+  
+  // Apply the EXACT same classes as the editor
+  container.className = 'font-sans prose prose-slate max-w-none break-words whitespace-pre-wrap leading-relaxed'; 
+  
   container.innerHTML = htmlContent;
   
   document.body.appendChild(container);
 
   try {
     const canvas = await html2canvas(container, {
-      scale: 2, // Higher resolution
+      scale: 2, // Higher resolution for crisp text
       useCORS: true,
-      logging: false
+      logging: false,
+      backgroundColor: '#ffffff',
+      windowWidth: 794
     });
-    return canvas.toDataURL('image/jpeg', 0.9);
+    return canvas.toDataURL('image/jpeg', 0.95);
   } finally {
     document.body.removeChild(container);
   }
+};
+
+/**
+ * Slices a long image into multiple A4-sized chunks
+ */
+const sliceLongImage = (imageUrl: string, a4Ratio: number): Promise<string[]> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const imgW = img.width;
+      const imgH = img.height;
+      
+      // Calculate the height of one "page" in image pixels based on the target aspect ratio
+      // a4Ratio = width / height (~0.7)
+      // pageHeight = width / ratio
+      const pageHeightInPixels = Math.floor(imgW / a4Ratio);
+      
+      // If image fits in one page (with small tolerance), don't split
+      if (imgH <= pageHeightInPixels + 10) {
+         resolve([imageUrl]);
+         return;
+      }
+
+      const pagesCount = Math.ceil(imgH / pageHeightInPixels);
+      const chunks: string[] = [];
+
+      const canvas = document.createElement('canvas');
+      canvas.width = imgW;
+      canvas.height = pageHeightInPixels;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve([imageUrl]); return; }
+
+      for (let i = 0; i < pagesCount; i++) {
+        // Clear canvas with white background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Calculate crop area from source
+        const sY = i * pageHeightInPixels;
+        // The source height is either a full page or the remainder
+        const sH = Math.min(pageHeightInPixels, imgH - sY);
+        
+        // Draw the slice onto the canvas
+        // We draw it at y=0. If it's the last partial page, it will be at the top,
+        // and the rest of the canvas will remain white (filling the A4 page).
+        ctx.drawImage(img, 0, sY, imgW, sH, 0, 0, imgW, sH);
+        
+        chunks.push(canvas.toDataURL('image/jpeg', 0.95));
+      }
+      resolve(chunks);
+    };
+    img.onerror = () => resolve([imageUrl]);
+    img.src = imageUrl;
+  });
 };
 
 /**
@@ -93,17 +154,21 @@ export const generatePDF = async (
   options: GeneratePDFOptions = { includePageNumbers: false, enableScanMode: false }
 ): Promise<void> => {
   const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 10;
+  const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
+  const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
+  
+  // Use a standard print margin
+  const margin = 10; 
+  
+  // Dimensions of the writable area
   const maxW = pageWidth - (margin * 2);
   const maxH = pageHeight - (margin * 2);
+  const pdfRatio = maxW / maxH;
+
+  let pageCounter = 0;
 
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i];
-    
-    if (i > 0) doc.addPage();
-
     let processedImageUrl = '';
 
     if (page.type === 'IMAGE') {
@@ -114,39 +179,43 @@ export const generatePDF = async (
 
     if (!processedImageUrl) continue;
 
-    const imgProps = doc.getImageProperties(processedImageUrl);
-    const imgRatio = imgProps.width / imgProps.height;
-    
-    let finalWidth = pageWidth;
-    let finalHeight = pageHeight;
-    
-    if (imgRatio > 1) {
-       finalWidth = maxW;
-       finalHeight = maxW / imgRatio;
-       if (finalHeight > maxH) {
-         finalHeight = maxH;
-         finalWidth = maxH * imgRatio;
-       }
-    } else {
-       finalHeight = maxH;
-       finalWidth = maxH * imgRatio;
-       if (finalWidth > maxW) {
-         finalWidth = maxW;
-         finalHeight = maxW / imgRatio;
-       }
-    }
+    // Split content if it exceeds one page vertically
+    const imageChunks = await sliceLongImage(processedImageUrl, pdfRatio);
 
-    const x = (pageWidth - finalWidth) / 2;
-    const y = (pageHeight - finalHeight) / 2;
+    for (let k = 0; k < imageChunks.length; k++) {
+        const chunkUrl = imageChunks[k];
+        
+        // Add new page for every chunk (except the very first page of the doc)
+        if (pageCounter > 0) doc.addPage();
+        pageCounter++;
 
-    doc.addImage(processedImageUrl, 'JPEG', x, y, finalWidth, finalHeight);
+        const imgProps = doc.getImageProperties(chunkUrl);
+        const imgRatio = imgProps.width / imgProps.height;
+        
+        let finalWidth = maxW;
+        let finalHeight = maxW / imgRatio;
 
-    if (options.includePageNumbers) {
-      doc.setFontSize(10);
-      doc.setTextColor(100);
-      const pageNumText = `Page ${i + 1} of ${pages.length}`;
-      const textWidth = doc.getTextWidth(pageNumText);
-      doc.text(pageNumText, (pageWidth - textWidth) / 2, pageHeight - 10);
+        // If for some reason the slice doesn't match PDF ratio (e.g. slight rounding),
+        // ensure we don't exceed bounds
+        if (finalHeight > maxH) {
+             finalHeight = maxH;
+             finalWidth = maxH * imgRatio;
+        }
+
+        // Center the image in the writable area
+        const x = margin + (maxW - finalWidth) / 2;
+        const y = margin + (maxH - finalHeight) / 2;
+
+        doc.addImage(chunkUrl, 'JPEG', x, y, finalWidth, finalHeight);
+
+        if (options.includePageNumbers) {
+          doc.setFontSize(10);
+          doc.setTextColor(150);
+          const pageNumText = `Page ${pageCounter}`;
+          const textWidth = doc.getTextWidth(pageNumText);
+          // Position footer inside the bottom margin
+          doc.text(pageNumText, (pageWidth - textWidth) / 2, pageHeight - 5);
+        }
     }
   }
 

@@ -469,8 +469,98 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar Thumbnails */}
-        <div className="w-64 bg-white border-r border-gray-200 overflow-y-auto hidden md:block p-4">
+        
+        {/* Main Canvas Area */}
+        <div className="flex-1 bg-slate-100 overflow-auto p-8 relative flex flex-col items-center">
+           
+           {/* Navigation Arrows */}
+           <button 
+              onClick={() => setCurrentPageIndex(Math.max(0, currentPageIndex - 1))}
+              disabled={currentPageIndex === 0}
+              className="absolute left-4 top-1/2 z-10 p-3 bg-white rounded-full shadow-lg text-slate-600 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+           >
+             <ChevronLeft />
+           </button>
+           
+           <button 
+              onClick={() => setCurrentPageIndex(Math.min(pages.length - 1, currentPageIndex + 1))}
+              disabled={currentPageIndex === pages.length - 1}
+              className="absolute right-4 top-1/2 z-10 p-3 bg-white rounded-full shadow-lg text-slate-600 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+           >
+             <ChevronRight />
+           </button>
+
+           {/* Content Wrapper */}
+           <div className="flex flex-col items-center gap-6 min-h-full pb-20 w-full justify-center">
+               
+               {currentPage && (
+                 <div className="flex flex-col items-center gap-2 animate-fade-in w-full max-w-fit">
+                     <div className="flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-wider">
+                         {currentPage.type === 'IMAGE' ? (
+                            <><ImageIcon size={14} /> Original Source</>
+                         ) : (
+                            <><FileText size={14} className="text-indigo-500" /> Editable Document</>
+                         )}
+                      </div>
+                     
+                     <div 
+                       // REMOVED overflow-hidden for text pages to prevent clipping top/bottom content
+                       className={`bg-white shadow-xl transition-all duration-300 ease-out group relative ring-1 ring-slate-900/5 flex flex-col ${currentPage.type === 'IMAGE' ? 'overflow-hidden' : ''}`}
+                       style={{ 
+                         width: `${500 * (zoom/100)}px`, 
+                         minHeight: `${700 * (zoom/100)}px`,
+                         height: currentPage.type === 'IMAGE' ? `${700 * (zoom/100)}px` : 'auto',
+                         transformOrigin: 'top center'
+                       }}
+                     >
+                       {currentPage.type === 'IMAGE' ? (
+                          <div className="w-full h-full p-8 flex items-center justify-center overflow-hidden relative">
+                              <img 
+                                src={currentPage.content} 
+                                alt="Current Page" 
+                                className="max-w-full max-h-full object-contain relative z-10"
+                              />
+                              
+                              {!isExtracting && (
+                                  <div 
+                                      onClick={() => setEditingImageId(currentPage.id)}
+                                      className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/5 transition-colors flex items-center justify-center z-10 cursor-pointer"
+                                      title="Click to crop"
+                                  >
+                                      <div className="opacity-0 group-hover:opacity-100 bg-white/90 backdrop-blur text-blue-600 px-4 py-2 rounded-full shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all font-medium flex items-center gap-2">
+                                          <Edit3 size={16} />
+                                          Crop / Edit
+                                      </div>
+                                  </div>
+                              )}
+
+                               {isExtracting && (
+                                 <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-3">
+                                   <Loader2 size={32} className="animate-spin text-indigo-600" />
+                                   <span className="text-sm font-semibold text-indigo-700 animate-pulse">
+                                      Analyzing Layout...
+                                   </span>
+                                 </div>
+                               )}
+                          </div>
+                       ) : (
+                          <RichTextEditor 
+                             key={currentPage.id} // Important: force new instance on page switch
+                             html={currentPage.content}
+                             onChange={handleTextChange}
+                             // Added leading-relaxed, break-words, and whitespace-pre-wrap to fix layout issues
+                             className={`flex-1 p-12 outline-none prose prose-slate max-w-none break-words whitespace-pre-wrap leading-relaxed focus:bg-blue-50/10 transition-colors text-slate-800`}
+                             style={editorStyle}
+                          />
+                       )}
+                     </div>
+                 </div>
+               )}
+           </div>
+        </div>
+
+        {/* Sidebar Thumbnails - RIGHT SIDE */}
+        <div className="w-64 bg-white border-l border-gray-200 overflow-y-auto hidden md:block p-4">
            <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-slate-700">Pages</h3>
            </div>
@@ -547,93 +637,6 @@ const PreviewEditor: React.FC<PreviewEditorProps> = ({ images, onBack, onUpdateI
            </div>
         </div>
 
-        {/* Main Canvas Area */}
-        <div className="flex-1 bg-slate-100 overflow-auto p-8 relative flex flex-col items-center">
-           
-           {/* Navigation Arrows */}
-           <button 
-              onClick={() => setCurrentPageIndex(Math.max(0, currentPageIndex - 1))}
-              disabled={currentPageIndex === 0}
-              className="absolute left-4 top-1/2 z-10 p-3 bg-white rounded-full shadow-lg text-slate-600 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-           >
-             <ChevronLeft />
-           </button>
-           
-           <button 
-              onClick={() => setCurrentPageIndex(Math.min(pages.length - 1, currentPageIndex + 1))}
-              disabled={currentPageIndex === pages.length - 1}
-              className="absolute right-4 top-1/2 z-10 p-3 bg-white rounded-full shadow-lg text-slate-600 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-           >
-             <ChevronRight />
-           </button>
-
-           {/* Content Wrapper */}
-           <div className="flex flex-col items-center gap-6 min-h-full pb-20 w-full justify-center">
-               
-               {currentPage && (
-                 <div className="flex flex-col items-center gap-2 animate-fade-in w-full max-w-fit">
-                     <div className="flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-wider">
-                         {currentPage.type === 'IMAGE' ? (
-                            <><ImageIcon size={14} /> Original Source</>
-                         ) : (
-                            <><FileText size={14} className="text-indigo-500" /> Editable Document</>
-                         )}
-                      </div>
-                     
-                     <div 
-                       className="bg-white shadow-xl transition-all duration-300 ease-out group relative overflow-hidden ring-1 ring-slate-900/5 flex flex-col"
-                       style={{ 
-                         width: `${500 * (zoom/100)}px`, 
-                         minHeight: `${700 * (zoom/100)}px`,
-                         height: currentPage.type === 'IMAGE' ? `${700 * (zoom/100)}px` : 'auto',
-                         transformOrigin: 'top center'
-                       }}
-                     >
-                       {currentPage.type === 'IMAGE' ? (
-                          <div className="w-full h-full p-8 flex items-center justify-center overflow-hidden relative">
-                              <img 
-                                src={currentPage.content} 
-                                alt="Current Page" 
-                                className="max-w-full max-h-full object-contain relative z-10"
-                              />
-                              
-                              {!isExtracting && (
-                                  <div 
-                                      onClick={() => setEditingImageId(currentPage.id)}
-                                      className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/5 transition-colors flex items-center justify-center z-10 cursor-pointer"
-                                      title="Click to crop"
-                                  >
-                                      <div className="opacity-0 group-hover:opacity-100 bg-white/90 backdrop-blur text-blue-600 px-4 py-2 rounded-full shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all font-medium flex items-center gap-2">
-                                          <Edit3 size={16} />
-                                          Crop / Edit
-                                      </div>
-                                  </div>
-                              )}
-
-                               {isExtracting && (
-                                 <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-3">
-                                   <Loader2 size={32} className="animate-spin text-indigo-600" />
-                                   <span className="text-sm font-semibold text-indigo-700 animate-pulse">
-                                      Analyzing Layout...
-                                   </span>
-                                 </div>
-                               )}
-                          </div>
-                       ) : (
-                          <RichTextEditor 
-                             key={currentPage.id} // Important: force new instance on page switch
-                             html={currentPage.content}
-                             onChange={handleTextChange}
-                             // Removed [&_*]:text-black to ensure inline styles for color are respected
-                             className={`flex-1 p-12 outline-none prose prose-slate max-w-none focus:bg-blue-50/10 transition-colors text-slate-800`}
-                             style={editorStyle}
-                          />
-                       )}
-                     </div>
-                 </div>
-               )}
-           </div>
-        </div>
       </div>
 
       {showDownloadModal && (
